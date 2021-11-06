@@ -1,0 +1,13 @@
+# Binaries
+docker-manager
+*.exe
+
+# Go
+/vendor/
+*.test
+*.out
+
+# IDE
+.idea/
+.vscode/
+*.swp
