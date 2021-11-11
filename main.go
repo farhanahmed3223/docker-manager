@@ -1,7 +1,7 @@
 package main
 
-import "fmt"
+import "docker-manager/cmd"
 
 func main() {
-	fmt.Println("docker manager - todo")
+	cmd.Execute()
 }
