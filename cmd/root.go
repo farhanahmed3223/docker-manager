@@ -7,10 +7,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var (
+	compactMode bool
+)
+
 var rootCmd = &cobra.Command{
 	Use:   "docker-manager",
-	Short: "Terminal Docker manager",
-	Long:  "A TUI for managing Docker containers.",
+	Short: "A terminal-based Docker container manager",
+	Long:  `A feature-rich TUI for managing Docker containers with real-time monitoring and controls.`,
 }
 
 func Execute() {
@@ -21,5 +25,9 @@ func Execute() {
 }
 
 func init() {
+	rootCmd.PersistentFlags().BoolVarP(&compactMode, "compact", "c", false, "Use compact display mode")
 	rootCmd.AddCommand(listCmd)
+	rootCmd.AddCommand(statsCmd)
+	rootCmd.AddCommand(logsCmd)
+	rootCmd.AddCommand(interactiveCmd)
 }
