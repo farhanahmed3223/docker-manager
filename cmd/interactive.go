@@ -18,16 +18,17 @@ var interactiveCmd = &cobra.Command{
 		dc, err := docker.NewDockerClient()
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Error connecting to Docker:", err)
+			fmt.Fprintln(os.Stderr, "Is Docker running? Try: docker ps")
 			os.Exit(1)
 		}
-		p := tea.NewProgram(ui.NewModel(dc), tea.WithAltScreen())
+		p := tea.NewProgram(
+			ui.NewModel(dc, compactMode),
+			tea.WithAltScreen(),
+			tea.WithMouseCellMotion(),
+		)
 		if _, err := p.Run(); err != nil {
-			fmt.Fprintln(os.Stderr, "Error:", err)
+			fmt.Fprintln(os.Stderr, "Error running TUI:", err)
 			os.Exit(1)
 		}
 	},
-}
-
-func init() {
-	rootCmd.AddCommand(interactiveCmd)
 }
