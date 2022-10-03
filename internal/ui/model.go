@@ -50,13 +50,23 @@ func NewModel(dc *docker.DockerClient, compact bool) Model {
 		{Title: "Name", Width: 20},
 		{Title: "Image", Width: 25},
 		{Title: "Status", Width: 15},
+		{Title: "Ports", Width: 20},
 		{Title: "CPU%", Width: 8},
 		{Title: "Memory%", Width: 10},
+		{Title: "Network", Width: 15},
+		{Title: "Uptime", Width: 15},
 	}
 	t := table.New(table.WithColumns(cols), table.WithFocused(true), table.WithHeight(15))
 	ti := textinput.New()
-	ti.Placeholder = "Filter..."
-	return Model{dockerClient: dc, table: t, textinput: ti, loading: true, compactMode: compact}
+	ti.Placeholder = "Filter containers..."
+	ti.CharLimit = 64
+	return Model{
+		dockerClient: dc,
+		table:        t,
+		textinput:    ti,
+		loading:      true,
+		compactMode:  compact,
+	}
 }
 
 func tick() tea.Cmd {
@@ -89,7 +99,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = false
 		m.err = msg.error
 	case tea.WindowSizeMsg:
+		// fix: update table height when terminal is resized
 		m.width, m.height = msg.Width, msg.Height
+		tableHeight := m.height - 6
+		if tableHeight < 4 {
+			tableHeight = 4
+		}
+		m.table.SetHeight(tableHeight)
+		m.viewport = viewport.New(m.width, tableHeight)
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, keys.Quit):
@@ -97,6 +114,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, keys.Refresh):
 			m.loading = true
 			return m, fetchContainers(m.dockerClient)
+		case key.Matches(msg, keys.Filter):
+			m.currentView = FilterView
+			m.textinput.Focus()
+			return m, textinput.Blink
 		}
 	}
 	var cmd tea.Cmd
@@ -110,22 +131,22 @@ func (m *Model) refreshTable() {
 		if m.filter != "" && !strings.Contains(strings.ToLower(c.Name), strings.ToLower(m.filter)) {
 			continue
 		}
-		rows = append(rows, table.Row{c.ID, c.Name, c.Image, c.Status, "—", "—"})
+		rows = append(rows, table.Row{c.ID, c.Name, c.Image, c.Status, "", "—", "—", "—", "—"})
 	}
 	m.table.SetRows(rows)
 }
 
 func (m Model) View() string {
 	if m.loading {
-		return "⟳ Fetching containers..."
+		return "\n  ⟳ Fetching containers...\n"
 	}
 	if m.err != nil {
-		return fmt.Sprintf("❌ Error: %v\n\nPress q to quit.", m.err)
+		return fmt.Sprintf("\n  ❌ Error: %v\n\n  Press q to quit.\n", m.err)
 	}
 	header := titleStyle.Render("🐋 Docker Manager")
 	if m.filter != "" {
 		header += "  " + lipgloss.NewStyle().Foreground(lipgloss.Color("#f59e0b")).Render("filter: "+m.filter)
 	}
 	help := helpStyle.Render("↑/↓ navigate  s start  x stop  l logs  / filter  r refresh  q quit")
-	return header + "\n\n" + m.table.View() + "\n" + help
+	return "\n" + header + "\n\n" + m.table.View() + "\n" + help
 }
