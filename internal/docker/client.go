@@ -38,6 +38,8 @@ type StatsResult struct {
 
 type DockerClient struct {
 	cli *client.Client
+	ctx context.Context
+	cancel context.CancelFunc
 }
 
 func NewDockerClient() (*DockerClient, error) {
@@ -45,10 +47,19 @@ func NewDockerClient() (*DockerClient, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to docker: %w", err)
 	}
-	return &DockerClient{cli: cli}, nil
+	ctx, cancel := context.WithCancel(context.Background())
+	return &DockerClient{cli: cli, ctx: ctx, cancel: cancel}, nil
+}
+
+func (d *DockerClient) Close() {
+	d.cancel()
+	d.cli.Close()
 }
 
 func (d *DockerClient) ListContainers(ctx context.Context) ([]ContainerInfo, error) {
+	if ctx == nil {
+		ctx = d.ctx
+	}
 	raw, err := d.cli.ContainerList(ctx, types.ContainerListOptions{All: true})
 	if err != nil {
 		return nil, err
@@ -85,29 +96,22 @@ func (d *DockerClient) GetLogs(ctx context.Context, nameOrID string, tail int, f
 	if tail > 0 {
 		tailStr = strconv.Itoa(tail)
 	}
-	opts := types.ContainerLogsOptions{
-		ShowStdout: true,
-		ShowStderr: true,
-		Follow:     follow,
-		Tail:       tailStr,
-		Timestamps: false,
-	}
-	return d.cli.ContainerLogs(ctx, nameOrID, opts)
+	return d.cli.ContainerLogs(ctx, nameOrID, types.ContainerLogsOptions{
+		ShowStdout: true, ShowStderr: true,
+		Follow: follow, Tail: tailStr,
+	})
 }
 
 func (d *DockerClient) GetStats(ctx context.Context, nameOrID string) (*StatsResult, error) {
 	resp, err := d.cli.ContainerStats(ctx, nameOrID, false)
 	if err != nil {
-		return nil, fmt.Errorf("stats error: %w", err)
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
 		return nil, err
 	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
 	var raw types.StatsJSON
 	if err := json.Unmarshal(body, &raw); err != nil {
-		return nil, fmt.Errorf("failed to parse stats: %w", err)
+		return nil, err
 	}
 	cpuDelta := float64(raw.CPUStats.CPUUsage.TotalUsage - raw.PreCPUStats.CPUUsage.TotalUsage)
 	sysDelta := float64(raw.CPUStats.SystemUsage - raw.PreCPUStats.SystemUsage)
@@ -122,17 +126,5 @@ func (d *DockerClient) GetStats(ctx context.Context, nameOrID string) (*StatsRes
 	if memLimit > 0 {
 		memPct = float64(memUsage) / float64(memLimit) * 100.0
 	}
-	var netRx, netTx uint64
-	for _, v := range raw.Networks {
-		netRx += v.RxBytes
-		netTx += v.TxBytes
-	}
-	return &StatsResult{
-		CPUPercent: cpuPct,
-		MemUsage:   memUsage,
-		MemLimit:   memLimit,
-		MemPercent: memPct,
-		NetRx:      netRx,
-		NetTx:      netTx,
-	}, nil
+	return &StatsResult{CPUPercent: cpuPct, MemUsage: memUsage, MemLimit: memLimit, MemPercent: memPct}, nil
 }
